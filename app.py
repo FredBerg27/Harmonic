@@ -1,143 +1,174 @@
 import tkinter as tk
-from tkinter import ttk
-import instruments
+from tkinter import ttk, simpledialog, messagebox
+import time
+import threading
+from instrument import Fretboard, Keyboard, Sheet_Music
 
-Fretboard = instruments.Fretboard()
-Keyboard = instruments.Keyboard()
-
-class GuitarUI:
+class HarmonicAnalysisApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Guitar Fretboard Visualizer")
+        self.root.title("Harmonic Analysis Tool")
+        self.root.geometry("1200x800")
         
-        self.guitar = Fretboard()
-        self.selected_notes = []
+        # Initialize instruments
+        self.fretboard = Fretboard()
+        self.keyboard = Keyboard()
+        self.sheet_music = Sheet_Music()
         
-        self.create_widgets()
-        self.draw_fretboard()
+        # Selected notes for the current chord
+        self.current_chord = []
         
-    def create_widgets(self):
-        # Create frame for controls
-        control_frame = ttk.Frame(self.root, padding="10")
-        control_frame.grid(row=0, column=0, sticky="w")
-        
-        # Tuning selector
-        ttk.Label(control_frame, text="Tuning:").grid(row=0, column=0, padx=5, pady=5)
-        self.tuning_var = tk.StringVar(value=self.guitar.current_tuning)
-        tuning_combo = ttk.Combobox(control_frame, textvariable=self.tuning_var, 
-                                    values=["standard", "atmospheric"], width=15) #Change this line to add tunings
-        tuning_combo.grid(row=0, column=1, padx=5, pady=5)
-        tuning_combo.bind("<<ComboboxSelected>>", self.change_tuning)
-        
-        # Clear selection button
-        clear_btn = ttk.Button(control_frame, text="Clear Selection", command=self.clear_selection)
-        clear_btn.grid(row=0, column=2, padx=5, pady=5)
-        
-        # Play button
-        play_btn = ttk.Button(control_frame, text="Play Selected Notes", command=self.play_notes)
-        play_btn.grid(row=0, column=3, padx=5, pady=5)
-        
-        # Create frame for fretboard
-        self.fretboard_frame = ttk.Frame(self.root, padding="10")
-        self.fretboard_frame.grid(row=1, column=0, sticky="nsew")
-        
-        # Selected notes display
-        ttk.Label(self.root, text="Selected Notes:").grid(row=2, column=0, sticky="w", padx=10, pady=5)
-        self.notes_display = ttk.Label(self.root, text="")
-        self.notes_display.grid(row=3, column=0, sticky="w", padx=10, pady=5)
-        
-    def draw_fretboard(self):
-        # Clear the frame first
-        for widget in self.fretboard_frame.winfo_children():
+        # Initial welcome screen
+        self.show_welcome_screen()
+    
+    def show_welcome_screen(self):
+        # Clear existing widgets
+        for widget in self.root.winfo_children():
             widget.destroy()
         
-        # Draw fret numbers
-        for i in range(self.guitar.num_frets):
-            fret_label = ttk.Label(self.fretboard_frame, text=str(i), width=4, 
-                                   borderwidth=1, relief="solid", padding=5)
-            fret_label.grid(row=0, column=i+1)
+        welcome_frame = ttk.Frame(self.root, padding="20")
+        welcome_frame.pack(expand=True, fill=tk.BOTH)
         
-        # Draw strings and frets
-        for string_idx in range(6):
-            # String label (shows open string note)
-            open_note = self.guitar.strings[string_idx][0]
-            string_label = ttk.Label(self.fretboard_frame, 
-                                    text=f"{open_note['note_name']}{open_note['number']}", 
-                                    width=4, borderwidth=1, relief="solid", padding=5)
-            string_label.grid(row=string_idx+1, column=0)
+        title_label = ttk.Label(welcome_frame, text="Harmonic Analysis Tool", font=("Arial", 24))
+        title_label.pack(pady=20)
+        
+        add_song_button = ttk.Button(welcome_frame, text="Add New Song", command=self.setup_new_song)
+        add_song_button.pack(pady=10)
+        
+        exit_button = ttk.Button(welcome_frame, text="Exit", command=self.root.quit)
+        exit_button.pack(pady=10)
+    
+    def setup_new_song(self):
+        # Get song name
+        song_name = simpledialog.askstring("New Song", "Enter song name:", parent=self.root)
+        if not song_name:
+            song_name = "Untitled"
+        
+        self.sheet_music.set_song_name(song_name)
+        
+        # Choose tuning
+        self.show_tuning_selection()
+    
+    def show_tuning_selection(self):
+        # Clear existing widgets
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        tuning_frame = ttk.Frame(self.root, padding="20")
+        tuning_frame.pack(expand=True, fill=tk.BOTH)
+        
+        title_label = ttk.Label(tuning_frame, text="Select Guitar Tuning", font=("Arial", 18))
+        title_label.pack(pady=20)
+        
+        tunings = ["Standard", "Drop D", "Atmospheric", "Open G"]
+        tuning_var = tk.StringVar(value=tunings[0])
+        
+        for tuning in tunings:
+            tuning_radio = ttk.Radiobutton(tuning_frame, text=tuning, value=tuning, variable=tuning_var)
+            tuning_radio.pack(anchor=tk.W, pady=5)
+        
+        continue_button = ttk.Button(tuning_frame, text="Continue", 
+                                     command=lambda: self.setup_main_interface(tuning_var.get()))
+        continue_button.pack(pady=20)
+        
+        back_button = ttk.Button(tuning_frame, text="Back", command=self.show_welcome_screen)
+        back_button.pack()
+    
+    def setup_main_interface(self, tuning):
+        # Set the selected tuning
+        self.fretboard.set_tuning(tuning)
+        
+        # Clear existing widgets
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        # Main container
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(expand=True, fill=tk.BOTH)
+        
+        # Title and song info
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(fill=tk.X, pady=5)
+        
+        title_label = ttk.Label(info_frame, text=f"Song: {self.sheet_music.song_name}", font=("Arial", 14))
+        title_label.pack(side=tk.LEFT, padx=10)
+        
+        tuning_label = ttk.Label(info_frame, text=f"Tuning: {self.fretboard.current_tuning}", font=("Arial", 12))
+        tuning_label.pack(side=tk.RIGHT, padx=10)
+        
+        # Create three main sections
+        self.create_fretboard_section(main_frame)
+        self.create_keyboard_section(main_frame)
+        self.create_sheet_music_section(main_frame)
+        
+        # Bottom control panel
+        control_frame = ttk.Frame(main_frame, padding="10")
+        control_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        play_button = ttk.Button(control_frame, text="Play Song", command=self.play_full_song)
+        play_button.pack(side=tk.LEFT, padx=5)
+        
+        clear_button = ttk.Button(control_frame, text="Clear Song", command=self.clear_song)
+        clear_button.pack(side=tk.LEFT, padx=5)
+        
+        new_song_button = ttk.Button(control_frame, text="New Song", command=self.show_welcome_screen)
+        new_song_button.pack(side=tk.RIGHT, padx=5)
+    
+    def create_fretboard_section(self, parent):
+        fretboard_frame = ttk.LabelFrame(parent, text="Guitar Fretboard", padding="10")
+        fretboard_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # Create fretboard display
+        fretboard_canvas = tk.Canvas(fretboard_frame, bg="white", height=150)
+        fretboard_canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # Draw fretboard
+        string_height = 20
+        fret_width = 40
+        
+        # Draw strings
+        for i in range(6):
+            y = 25 + i * string_height
+            fretboard_canvas.create_line(50, y, 50 + fret_width * self.fretboard.num_frets, y, width=1 + (5-i)/2)
             
-            # Draw each fret on this string
-            for fret in range(self.guitar.num_frets):
-                note = self.guitar.strings[string_idx][fret]
-                btn = tk.Button(self.fretboard_frame, 
-                               text=f"{note['note_name']}{note['number']}", 
-                               width=4, height=2, 
-                               bg="white")
-                btn.grid(row=string_idx+1, column=fret+1)
+            # String label
+            note = self.fretboard.strings[i][0]["note_name"] + str(self.fretboard.strings[i][0]["number"])
+            fretboard_canvas.create_text(30, y, text=note)
+        
+        # Draw frets
+        for i in range(self.fretboard.num_frets + 1):
+            x = 50 + i * fret_width
+            fretboard_canvas.create_line(x, 25, x, 25 + 5 * string_height, width=2 if i == 0 else 1)
+            
+            # Fret number
+            if i > 0:
+                fretboard_canvas.create_text(x - fret_width/2, 10, text=str(i))
+        
+        # Create clickable positions
+        self.fretboard_buttons = []
+        for string in range(6):
+            string_buttons = []
+            for fret in range(self.fretboard.num_frets):
+                x = 50 + fret * fret_width + fret_width/2
+                y = 25 + string * string_height
                 
-                # Command to handle note selection
-                btn.config(command=lambda s=string_idx, f=fret, b=btn: self.select_note(s, f, b))
-    
-    def select_note(self, string_idx, fret, button):
-        note = self.guitar.get_note_at(string_idx, fret)
-        note_info = {
-            "string": string_idx,
-            "fret": fret,
-            "note": f"{note['note_name']}{note['number']}",
-            "button": button
-        }
+                note = self.fretboard.strings[string][fret]
+                button = fretboard_canvas.create_oval(x-8, y-8, x+8, y+8, fill="white", outline="black")
+                
+                # Bind click event
+                fretboard_canvas.tag_bind(button, "<Button-1>", 
+                                         lambda event, s=string, f=fret: self.select_fretboard_note(s, f))
+                
+                string_buttons.append(button)
+            self.fretboard_buttons.append(string_buttons)
         
-        # Check if already selected
-        for i, selected in enumerate(self.selected_notes):
-            if selected["string"] == string_idx and selected["fret"] == fret:
-                # Deselect
-                self.selected_notes.pop(i)
-                button.config(bg="white")
-                self.update_notes_display()
-                return
+        # Control buttons
+        button_frame = ttk.Frame(fretboard_frame)
+        button_frame.pack(fill=tk.X, pady=5)
         
-        # Add to selected
-        self.selected_notes.append(note_info)
-        button.config(bg="light blue")
-        self.update_notes_display()
-    
-    def update_notes_display(self):
-        if not self.selected_notes:
-            self.notes_display.config(text="No notes selected")
-            return
-            
-        notes_text = ", ".join([f"String {n['string']+1}, Fret {n['fret']}: {n['note']}" 
-                               for n in self.selected_notes])
-        self.notes_display.config(text=notes_text)
-    
-    def clear_selection(self):
-        for note in self.selected_notes:
-            note["button"].config(bg="white")
-        self.selected_notes = []
-        self.update_notes_display()
-    
-    def change_tuning(self, event):
-        new_tuning = self.tuning_var.get()
-        self.guitar.set_tuning(new_tuning)
-        self.clear_selection()
-        self.draw_fretboard()
-    
-    def play_notes(self):
-        # This would integrate with an audio library to play the selected notes
-        # For now, we'll just print what would be played
-        if not self.selected_notes:
-            print("No notes to play")
-            return
-            
-        print("Playing notes:")
-        for note in self.selected_notes:
-            print(f"- {note['note']} (String {note['string']+1}, Fret {note['fret']})")
+        add_chord_button = ttk.Button(button_frame, text="Add Fretboard Chord", 
+                                     command=lambda: self.add_current_chord("Fretboard"))
+        add_chord_button.pack(side=tk.LEFT, padx=5)
         
-        # Here you would add code to actually play the sounds
-        # This could use a library like pygame.mixer, pyo, or pysynth
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = GuitarUI(root)
-    root.mainloop()
+        clear_button = ttk.Button(button_frame, text="Clear Selection", command=self.clear_selection)
+        
