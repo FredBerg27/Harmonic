@@ -1,8 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, simpledialog, messagebox
-import time
-import threading
-from instrument import Fretboard, Keyboard, Sheet_Music
+from tkinter import ttk, simpledialog
+from instruments import Fretboard, Sheet_Music
 
 class HarmonicAnalysisApp:
     def __init__(self, root):
@@ -12,7 +10,6 @@ class HarmonicAnalysisApp:
         
         # Initialize instruments
         self.fretboard = Fretboard()
-        self.keyboard = Keyboard()
         self.sheet_music = Sheet_Music()
         
         # Selected notes for the current chord
@@ -96,9 +93,8 @@ class HarmonicAnalysisApp:
         tuning_label = ttk.Label(info_frame, text=f"Tuning: {self.fretboard.current_tuning}", font=("Arial", 12))
         tuning_label.pack(side=tk.RIGHT, padx=10)
         
-        # Create three main sections
+        # Create two main sections
         self.create_fretboard_section(main_frame)
-        self.create_keyboard_section(main_frame)
         self.create_sheet_music_section(main_frame)
         
         # Bottom control panel
@@ -118,45 +114,57 @@ class HarmonicAnalysisApp:
         fretboard_frame = ttk.LabelFrame(parent, text="Guitar Fretboard", padding="10")
         fretboard_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        # Create fretboard display
-        fretboard_canvas = tk.Canvas(fretboard_frame, bg="white", height=150)
-        fretboard_canvas.pack(fill=tk.BOTH, expand=True)
+        # Create fretboard display with explicit width
+        self.fretboard_canvas = tk.Canvas(fretboard_frame, bg="white", height=150, width=1000)
+        self.fretboard_canvas.pack(fill=tk.BOTH, expand=True)
         
         # Draw fretboard
         string_height = 20
         fret_width = 40
+        start_x = 100  # Increased to make room for labels
+        start_y = 25
         
         # Draw strings
         for i in range(6):
-            y = 25 + i * string_height
-            fretboard_canvas.create_line(50, y, 50 + fret_width * self.fretboard.num_frets, y, width=1 + (5-i)/2)
+            y = start_y + i * string_height
+            self.fretboard_canvas.create_line(start_x, y, start_x + fret_width * self.fretboard.num_frets, y, width=1 + (5-i)/2)
             
-            # String label
-            note = self.fretboard.strings[i][0]["note_name"] + str(self.fretboard.strings[i][0]["number"])
-            fretboard_canvas.create_text(30, y, text=note)
+            # String label with note name and octave - make it more visible
+            note = self.fretboard.strings[i][0]
+            self.fretboard_canvas.create_text(80, y, text=f"{note['note_name']}{note['number']}", 
+                                           font=("Arial", 14, "bold"), fill="blue")
+            
+            # String number (1-6, from bottom to top) - make it more visible
+            self.fretboard_canvas.create_text(40, y, text=str(6-i), font=("Arial", 14, "bold"), fill="red")
         
         # Draw frets
         for i in range(self.fretboard.num_frets + 1):
-            x = 50 + i * fret_width
-            fretboard_canvas.create_line(x, 25, x, 25 + 5 * string_height, width=2 if i == 0 else 1)
+            x = start_x + i * fret_width
+            self.fretboard_canvas.create_line(x, start_y, x, start_y + 5 * string_height, width=2 if i == 0 else 1)
             
-            # Fret number
-            if i > 0:
-                fretboard_canvas.create_text(x - fret_width/2, 10, text=str(i))
+            # Fret number (starting from 0) - make it more visible
+            if i > 0:  # Skip the 0th fret (nut)
+                self.fretboard_canvas.create_text(x - fret_width/2, 10, text=str(i-1), 
+                                               font=("Arial", 14, "bold"), fill="green")
+        
+        # Add a title for the fretboard
+        self.fretboard_canvas.create_text(start_x + (fret_width * self.fretboard.num_frets)/2, 5,
+                                       text=f"Fretboard - {self.fretboard.current_tuning} Tuning",
+                                       font=("Arial", 16, "bold"), fill="purple")
         
         # Create clickable positions
         self.fretboard_buttons = []
         for string in range(6):
             string_buttons = []
             for fret in range(self.fretboard.num_frets):
-                x = 50 + fret * fret_width + fret_width/2
-                y = 25 + string * string_height
+                x = start_x + fret * fret_width + fret_width/2
+                y = start_y + string * string_height
                 
                 note = self.fretboard.strings[string][fret]
-                button = fretboard_canvas.create_oval(x-8, y-8, x+8, y+8, fill="white", outline="black")
+                button = self.fretboard_canvas.create_oval(x-8, y-8, x+8, y+8, fill="white", outline="black")
                 
                 # Bind click event
-                fretboard_canvas.tag_bind(button, "<Button-1>", 
+                self.fretboard_canvas.tag_bind(button, "<Button-1>", 
                                          lambda event, s=string, f=fret: self.select_fretboard_note(s, f))
                 
                 string_buttons.append(button)
@@ -166,9 +174,69 @@ class HarmonicAnalysisApp:
         button_frame = ttk.Frame(fretboard_frame)
         button_frame.pack(fill=tk.X, pady=5)
         
-        add_chord_button = ttk.Button(button_frame, text="Add Fretboard Chord", 
+        add_chord_button = ttk.Button(button_frame, text="Add Chord", 
                                      command=lambda: self.add_current_chord("Fretboard"))
         add_chord_button.pack(side=tk.LEFT, padx=5)
         
         clear_button = ttk.Button(button_frame, text="Clear Selection", command=self.clear_selection)
+        clear_button.pack(side=tk.LEFT, padx=5)
+    
+    def create_sheet_music_section(self, parent):
+        sheet_frame = ttk.LabelFrame(parent, text="Sheet Music", padding="10")
+        sheet_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
+        # Create listbox for chords
+        self.chord_listbox = tk.Listbox(sheet_frame, height=10)
+        self.chord_listbox.pack(fill=tk.BOTH, expand=True)
+        
+        # Update chord list
+        self.update_chord_list()
+    
+    def select_fretboard_note(self, string, fret):
+        # Check if a note is already selected on this string
+        for note in self.current_chord:
+            if note.get('string') == string:
+                # If a note is already selected on this string, deselect it first
+                self.fretboard_canvas.itemconfig(self.fretboard_buttons[string][note.get('fret')], fill="white")
+                self.current_chord.remove(note)
+                break
+        
+        note = self.fretboard.get_note_at_position(string, fret)
+        if note:
+            # Add string and fret information to the note
+            note['string'] = string
+            note['fret'] = fret
+            self.current_chord.append(note)
+            # Highlight selected note in blue
+            self.fretboard_canvas.itemconfig(self.fretboard_buttons[string][fret], fill="lightblue")
+    
+    def clear_selection(self):
+        self.current_chord = []
+        # Reset button colors
+        for string in self.fretboard_buttons:
+            for button in string:
+                self.fretboard_canvas.itemconfig(button, fill="white")
+    
+    def add_current_chord(self, source):
+        if self.current_chord:
+            self.sheet_music.add_chord(self.current_chord.copy())
+            self.update_chord_list()
+            self.clear_selection()
+    
+    def update_chord_list(self):
+        self.chord_listbox.delete(0, tk.END)
+        for chord in self.sheet_music.song:
+            chord_text = " ".join(f"{note['note_name']}{note['number']}" for note in chord)
+            self.chord_listbox.insert(tk.END, chord_text)
+    
+    def clear_song(self):
+        self.sheet_music.clear_song()
+        self.update_chord_list()
+    
+    def play_full_song(self):
+        self.sheet_music.play_song()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = HarmonicAnalysisApp(root)
+    root.mainloop()

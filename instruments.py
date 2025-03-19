@@ -10,6 +10,10 @@ class Instrument:
         self.sounds = {}
         self.bind_notes()
     
+    def __del__(self):
+        # Cleanup pygame mixer when the object is destroyed
+        mixer.quit()
+    
     def set_notes(self, number, first_note):
         # medium is that by which notes are played
         medium = [None] * number 
@@ -46,7 +50,10 @@ class Instrument:
                     note_name = parts[0]
                     number = parts[1]
                     note_key = f"{note_name}+{number}"
-                    self.sounds[note_key] = Sound(os.path.join(sounds_dir, file_name))
+                    try:
+                        self.sounds[note_key] = Sound(os.path.join(sounds_dir, file_name))
+                    except Exception as e:
+                        print(f"Error loading sound file {file_name}: {str(e)}")
                 
     def play_note(self, note):
         file_match = f"{note['note_name']}+{note['number']}"
@@ -54,7 +61,10 @@ class Instrument:
             self.sounds[file_match].play()
         else:
             print(f"No sound file found for {file_match}")
-            
+    
+    def stop_all_sounds(self):
+        mixer.stop()
+
 
 class Fretboard(Instrument):
     def __init__(self):
@@ -145,7 +155,10 @@ class Sheet_Music(Instrument):
         self.song_name = "Untitled"
     
     def add_chord(self, chord):
-        self.song.append(chord)
+        if isinstance(chord, list) and all(isinstance(note, dict) for note in chord):
+            self.song.append(chord)
+        else:
+            raise ValueError("Chord must be a list of note dictionaries")
     
     def remove_chord(self, index):
         if 0 <= index < len(self.song):
@@ -158,8 +171,31 @@ class Sheet_Music(Instrument):
         self.song_name = name
     
     def play_song(self):
-        for chord in self.song:
-            # Play all notes in the chord simultaneously
-            for note in chord:
-                self.play_note(note)
-            time.sleep(1)  # Wait 1 second between chords
+        if not self.song:
+            print("No chords in the song to play")
+            return
+            
+        try:
+            for chord in self.song:
+                # Play all notes in the chord simultaneously
+                for note in chord:
+                    self.play_note(note)
+                time.sleep(1)  # Wait 1 second between chords
+        except KeyboardInterrupt:
+            print("\nPlayback interrupted by user")
+            self.stop_all_sounds()
+        except Exception as e:
+            print(f"Error during playback: {str(e)}")
+            self.stop_all_sounds()
+
+
+
+
+                
+
+
+
+
+
+
+            
